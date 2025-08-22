@@ -32,11 +32,11 @@ ENV ENVIRONMENT=${ENVIRONMENT}
 # Copy the correct .env file
 COPY .env.${ENVIRONMENT} .env.${ENVIRONMENT}
 
-# Run migrations
-RUN alembic upgrade head
+# Ensure entrypoint is executable and will run migrations at container start
+RUN chmod +x entrypoint.sh
 
 # Expose FastAPI port
 EXPOSE 8000
 
-# Set the default command
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use entrypoint to run migrations then start API
+ENTRYPOINT ["./entrypoint.sh"]

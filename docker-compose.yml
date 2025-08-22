@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres_service
+    environment:
+      POSTGRES_DB: ${DB_NAME:-sample_db}
+      POSTGRES_USER: ${DB_USERNAME:-sample_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sample_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_service
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  backend:
+    container_name: fastapi_service
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    env_file:
+      - ./backend/.env.${ENVIRONMENT:-local}
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # Using image entrypoint to run migrations and start API
+
+  celery-worker:
+    container_name: celery_worker
+    build:
+      context: ./backend
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    env_file:
+      - ./backend/.env.${ENVIRONMENT:-local}
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    command: ["celery", "-A", "src.infrastructure.tasks", "worker", "--loglevel=info"]
+
+  celery-beat:
+    container_name: celery_beat
+    build:
+      context: ./backend
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    env_file:
+      - ./backend/.env.${ENVIRONMENT:-local}
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
+      - REDIS_BROKER_URL=redis://redis:6379/0
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    command: ["celery", "-A", "src.infrastructure.tasks", "beat", "--loglevel=info"]
+
+  frontend:
+    container_name: react_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+      - PORT=3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  pg-data:
+  redis-data:
+
+
