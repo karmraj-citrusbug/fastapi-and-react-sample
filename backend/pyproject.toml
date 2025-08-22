@@ -1,0 +1,17 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+select = [
+  "E", "F", "W", # pycodestyle/pyflakes
+  "I",             # isort
+]
+ignore = ["E501", "W503"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "config"]
+
+

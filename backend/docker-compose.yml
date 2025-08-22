@@ -1,0 +1,65 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: redis_service
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  fastapi-app:
+    container_name: fastapi_service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    env_file:
+      - .env.${ENVIRONMENT:-local}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  celery-worker:
+    container_name: celery_worker
+    build:
+      context: .
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    volumes:
+      - .:/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    env_file:
+      - .env.${ENVIRONMENT:-local}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: ["celery", "-A", "src.infrastructure.tasks", "worker", "--loglevel=info"]
+
+  celery-beat:
+    container_name: celery_beat
+    build:
+      context: .
+      args:
+        ENVIRONMENT: ${ENVIRONMENT:-local}
+    volumes:
+      - .:/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-local}
+    env_file:
+      - .env.${ENVIRONMENT:-local}
+    depends_on:
+      - redis
+    restart: unless-stopped
+    command: ["celery", "-A", "src.infrastructure.tasks", "beat", "--loglevel=info"]
+
+volumes:
+  redis-data:
